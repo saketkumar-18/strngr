@@ -1,5 +1,7 @@
 /* strngr client — anonymous video + text chat
-   Privacy: nothing is persisted; video/audio flows peer-to-peer, not via the server. */
+   Privacy: nothing is persisted; video/audio flows peer-to-peer, not via the server.
+   Omegle-parity: instant queue join (camera never blocks matching), composer
+   disabled until matched, optimistic message send, explicit re-find button. */
 'use strict';
 
 (() => {
@@ -18,13 +20,14 @@
   let mode = null;            // 'video' | 'text'
   let inChat = false;         // currently matched
   let searching = false;
-  let stream = null;          // local camera/mic
+  let stream = null;          // local camera/mic (may arrive late, or never)
+  let camState = 'unknown';   // 'on' | 'off' | 'unknown'
+  let mediaRequested = false; // avoid duplicate permission prompts
   let pc = null;              // RTCPeerConnection
   let polite = false;         // perfect-negotiation role
   let makingOffer = false;
   let ignoreOffer = false;
   let queuedCandidates = [];
-  const pendingAcks = new Set();
   let typingTimer = null;
 
   // ---------- tiny helpers ----------
@@ -54,9 +57,22 @@
     $('textWrap').style.display = mode === 'text' ? 'flex' : 'none';
     $('reportBtn').style.display = 'inline-block';
     $('skipBtn').style.display = 'inline-block';
+    if (mode === 'text') {
+      setComposer(false, 'Waiting for a stranger…');
+      sysMsg('Looking for someone to talk to…');
+    }
     if (!socket) connect();
     if (mode === 'video') beginVideoSearch();
     else findPartner();
+  }
+
+  // ---------- composer gating (Omegle-style: unusable until matched) ----------
+  function setComposer(enabled, placeholder) {
+    const input = $('msgInput');
+    const btn = $('sendBtn');
+    input.disabled = !enabled;
+    btn.disabled = !enabled;
+    if (placeholder !== undefined) input.placeholder = placeholder;
   }
 
   // ---------- socket ----------
@@ -78,11 +94,13 @@
       $('onlinePill').textContent = s === '1 online' ? 'you alone for now — share the link' : `${s} right now`;
     });
 
-    socket.on('searching', () => {
+    socket.on('searching', ({ online }) => {
       searching = true;
       inChat = false;
-      setStatus(mode === 'video' ? 'Looking for a stranger…' : 'Finding someone to talk to…', 'a');
-      if (mode === 'video') videoCenter(true, '🔍', 'Looking for a stranger…');
+      const suffix = online > 1 ? ` (${online} online)` : '';
+      setStatus(mode === 'video' ? 'Looking for a stranger…' : 'Finding someone to talk to…' + suffix, 'a');
+      if (mode === 'text') setComposer(false, 'Waiting for a stranger…');
+      if (mode === 'video') videoCenter(true, null, 'Looking for a stranger…');
     });
 
     socket.on('matched', ({ initiator }) => {
@@ -92,8 +110,10 @@
         setStatus('Stranger connected — say hi!', 'g');
         startPeerConnection(initiator);
       } else {
-        setStatus('You\'re now chatting with a random stranger', 'g');
-        sysMsg('You\'re now chatting with a random stranger. Say hi!');
+        setStatus("You're now chatting with a random stranger", 'g');
+        sysMsg("You're now chatting with a random stranger. Say hi!");
+        setComposer(true, 'Type a message…');
+        $('msgInput').focus();
       }
     });
 
@@ -105,13 +125,16 @@
     socket.on('typing', ({ on }) => { on ? typingOn() : typingOff(); });
 
     socket.on('partner-left', ({ reason }) => {
-      if (reason === 'skip') {
-        if (mode === 'video') { setStatus('Stranger skipped you', 'r'); videoCenter(true, '💨', 'Stranger skipped you'); }
-        else { setStatus('Stranger disconnected', 'r'); sysMsg('Stranger disconnected.'); }
+      const skipped = reason === 'skip';
+      if (mode === 'video') {
+        setStatus(skipped ? 'Stranger skipped you' : 'Stranger disconnected', 'r');
+        videoCenter(true, skipped ? '💨' : '👋', skipped ? 'Stranger skipped you' : 'Stranger left');
       } else {
-        if (mode === 'video') { setStatus('Stranger disconnected', 'r'); videoCenter(true, '👋', 'Stranger left'); }
-        else { setStatus('Stranger disconnected', 'r'); sysMsg('Stranger disconnected.'); }
+        setStatus(skipped ? 'Stranger disconnected' : 'Stranger disconnected', 'r');
+        sysMsg('Stranger disconnected.');
       }
+      sysFindButton();
+      setComposer(false, 'Waiting for a stranger…');
       cleanupPartner();
     });
 
@@ -136,6 +159,24 @@
     const s = document.createElement('span');
     s.textContent = text;
     row.appendChild(s);
+    $('messages').appendChild(row);
+    scrollDown();
+  }
+
+  // Omegle-style inline "start a new chat" action after a chat ends
+  function sysFindButton() {
+    if (mode !== 'text') return;
+    const row = document.createElement('div');
+    row.className = 'sysmsg';
+    const b = document.createElement('button');
+    b.textContent = '⟳ Find a new stranger';
+    b.style.cssText = 'font:inherit;font-size:.8rem;font-weight:600;color:#22d3ee;background:#171b26;border:1px solid #2e3648;border-radius:999px;padding:6px 14px;cursor:pointer';
+    b.addEventListener('click', () => {
+      b.disabled = true;
+      b.textContent = 'Looking…';
+      findPartner();
+    });
+    row.appendChild(b);
     $('messages').appendChild(row);
     scrollDown();
   }
@@ -167,25 +208,26 @@
   function typingOff() {
     if (typingRow) { typingRow.remove(); typingRow = null; }
   }
-  function typingRowRemove() { typingOff(); }
 
   function scrollDown() {
     const m = $('messages');
     m.scrollTop = m.scrollHeight;
   }
 
+  // optimistic send: message shows immediately; ack only flags failures
   function sendText() {
+    if (!socket) return;
     const input = $('msgInput');
     const text = input.value.trim();
-    if (!text || !inChat || !socket) return;
+    if (!text) return;
+    if (!inChat) {
+      toast('Still waiting for a stranger — messages send once connected');
+      return;
+    }
+    input.value = '';
+    addMsg('you', text);
     socket.emit('text-message', { text }, (res) => {
-      if (res && res.ok) {
-        addMsg('you', text);
-        input.value = '';
-        socket.emit('typing', { on: false });
-      } else {
-        toast('Not delivered — you may have been skipped');
-      }
+      if (!res || !res.ok) toast('Message may not have been delivered');
     });
   }
 
@@ -201,38 +243,48 @@
     if (label) $('videoLabel').textContent = label;
   }
 
-  async function beginVideoSearch() {
+  // join the video queue IMMEDIATELY — camera permission never blocks matching
+  function beginVideoSearch() {
     videoCenter(true, null, 'Looking for a stranger…');
     $('videoSpinner').style.display = 'block';
     $('videoEmoji').style.display = 'none';
-    $('videoControls').style.display = 'none';
+    $('videoControls').style.display = 'flex';
     $('reconnectNote').style.display = 'none';
-    if (!stream) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: true });
-        $('localVideo').srcObject = stream;
-      } catch (err) {
-        // no camera/mic (or blocked) — graceful fallback to text
-        toast('Camera unavailable — starting text chat instead', 3200);
-        startChat('text');
-        return;
-      }
-    }
     setStatus('Looking for a stranger…', 'a');
-    findPartner();
+    findPartner();   // instant queue join
+    ensureMedia();   // camera prompt runs in parallel
   }
 
-  function applyRemoteMediaState(video, audio) {
+  async function ensureMedia() {
+    if (stream || mediaRequested) return;
+    mediaRequested = true;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: true,
+      });
+      camState = 'on';
+      $('localVideo').srcObject = stream;
+      wireStreamIntoPC();
+      emitMediaState();
+    } catch (err) {
+      camState = 'off';
+      toast('Camera/mic unavailable — you can still chat (partner sees camera off)', 4000);
+      emitMediaState();
+    } finally {
+      mediaRequested = false;
+    }
+  }
+
+  function applyRemoteMediaState(video) {
     const rv = $('remoteVideo');
-    rv.dataset.videoOn = video ? '1' : '0';
     if (!video) {
       rv.style.opacity = '0.06';
-      if (inChat) videoCenter(true, '🎥', 'Stranger\'s camera is off');
+      if (inChat) videoCenter(true, '🎥', "Stranger's camera is off");
     } else {
       rv.style.opacity = '1';
-      videoCenter(false);
+      if (inChat) videoCenter(false);
     }
-    $('reconnectNote').dataset.micOff = audio ? '0' : '1';
   }
 
   // ---------- WebRTC (perfect negotiation) ----------
@@ -250,9 +302,9 @@
       const st = pc.connectionState;
       $('reconnectNote').style.display = (st === 'disconnected' || st === 'failed') && inChat ? 'block' : 'none';
       if (st === 'connected') {
-        videoCenter(false);
-        $('videoControls').style.display = 'flex';
+        if (inChat && !videoOverlayNeeded()) videoCenter(false);
         setStatus('Connected — talking to a stranger', 'g');
+        if (camState === 'off') toast("You're chatting without camera — partner sees it off", 3000);
       }
       if ((st === 'failed') && inChat) {
         try { pc.restartIce(); } catch (_) {}
@@ -262,14 +314,19 @@
       if ($('remoteVideo').srcObject !== e.streams[0]) {
         $('remoteVideo').srcObject = e.streams[0];
         $('remoteVideo').style.opacity = '1';
-        videoCenter(false);
-        $('videoControls').style.display = 'flex';
+        if (inChat && !videoOverlayNeeded()) videoCenter(false);
       }
     };
 
     if (stream) {
       for (const track of stream.getTracks()) pc.addTrack(track, stream);
-      emitMediaState();
+    } else {
+      // pre-declare media sections so the connection carries audio+video even
+      // before the camera arrives; replaceTrack() wires it in later
+      try {
+        pc.addTransceiver('video', { direction: 'sendrecv' });
+        pc.addTransceiver('audio', { direction: 'sendrecv' });
+      } catch (_) {}
     }
 
     if (isInitiator) {
@@ -282,6 +339,24 @@
         finally { makingOffer = false; }
       })();
     }
+  }
+
+  // late camera: attach to the already-negotiated PC via replaceTrack
+  function wireStreamIntoPC() {
+    if (!pc || !stream) return;
+    const v = stream.getVideoTracks()[0] || null;
+    const a = stream.getAudioTracks()[0] || null;
+    for (const t of pc.getTransceivers()) {
+      const kind = t.receiver && t.receiver.track ? t.receiver.track.kind : null;
+      if (kind === 'video' && v) { try { t.sender.replaceTrack(v); t.direction = 'sendrecv'; } catch (_) {} }
+      if (kind === 'audio' && a) { try { t.sender.replaceTrack(a); t.direction = 'sendrecv'; } catch (_) {} }
+    }
+  }
+
+  function videoOverlayNeeded() {
+    // keep the "camera off" overlay if the partner has no video
+    const rv = $('remoteVideo');
+    return rv.style.opacity === '0.06';
   }
 
   async function handleSignal({ description, candidate }) {
@@ -297,7 +372,6 @@
           await pc.setLocalDescription();
           socket.emit('signal', { data: { description: pc.localDescription } });
         }
-        // flush candidates queued while no remote description existed
         const queued = queuedCandidates; queuedCandidates = [];
         for (const c of queued) { try { await pc.addIceCandidate(c); } catch (_) {} }
       } else if (candidate) {
@@ -310,9 +384,9 @@
   }
 
   function emitMediaState() {
-    if (!socket || !stream) return;
-    const v = stream.getVideoTracks()[0];
-    const a = stream.getAudioTracks()[0];
+    if (!socket) return;
+    const v = stream ? stream.getVideoTracks()[0] : null;
+    const a = stream ? stream.getAudioTracks()[0] : null;
     socket.emit('media-state', { video: !!(v && v.enabled), audio: !!(a && a.enabled) });
   }
 
@@ -322,11 +396,12 @@
     // the next stranger. Local stream lifecycle is handled by stopLocalStream().
     if (pc) { try { pc.close(); } catch (_) {} pc = null; }
     const rv = $('remoteVideo');
-    if (rv) { rv.srcObject = null; rv.style.opacity = '1'; rv.dataset.videoOn = '1'; }
+    if (rv) { rv.srcObject = null; rv.style.opacity = '1'; }
   }
 
   function stopLocalStream() {
     if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+    camState = 'unknown';
     if ($('localVideo')) $('localVideo').srcObject = null;
   }
 
@@ -350,13 +425,14 @@
   $('skipBtn').addEventListener('click', () => {
     if (!socket) return;
     if (inChat) { socket.emit('skip'); sysMsg('You skipped the stranger.'); }
+    sysFindButton();
     if (mode === 'video') beginVideoSearch(); else { sysMsg('Looking for someone new…'); findPartner(); }
   });
 
   $('reportBtn').addEventListener('click', () => {
     if (!socket || !inChat) { toast('No one to report right now'); return; }
     socket.emit('report');
-    if (mode === 'text') sysMsg('Reported. Finding you a new conversation is up to you — click Next.');
+    if (mode === 'text') { sysMsg('Reported. Finding you a new conversation is up to you — click Next.'); sysFindButton(); }
     toast('Reported. The other person was not told it was you.');
     cleanupPartner();
     if (mode === 'video') videoCenter(true, '🚩', 'Reported. Tap Next for someone new.');
@@ -375,7 +451,7 @@
   $('sendBtn').addEventListener('click', sendText);
 
   $('camToggle').addEventListener('click', () => {
-    if (!stream) return;
+    if (!stream) { ensureMedia(); return; }  // retry camera if it never came up
     const t = stream.getVideoTracks()[0];
     if (!t) return;
     t.enabled = !t.enabled;
@@ -383,7 +459,7 @@
     emitMediaState();
   });
   $('micToggle').addEventListener('click', () => {
-    if (!stream) return;
+    if (!stream) { ensureMedia(); return; }
     const t = stream.getAudioTracks()[0];
     if (!t) return;
     t.enabled = !t.enabled;

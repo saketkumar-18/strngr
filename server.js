@@ -255,7 +255,8 @@ io.on('connection', (socket) => {
 });
 
 // housekeeping: prune dead queue entries, allow rematch with previous partner after a wait,
-// and pair queue-mates who were skipped apart but are both still waiting.
+// pair waiting queue-mates (both searching users must meet — this is the core Omegle loop),
+// and expose queue health for monitoring.
 setInterval(() => {
   const now = Date.now();
   for (let i = queue.length - 1; i >= 0; i--) {
@@ -266,11 +267,20 @@ setInterval(() => {
     const u = users.get(id);
     if (u && u.since && now - u.since >= REMATCH_AFTER_MS) lastPartner.delete(id);
   }
+  let paired = 0;
   for (const id of [...queue]) {
     const u = users.get(id);
     if (!u || u.state !== 'searching' || !queue.includes(id)) continue;
     const pid = scanCandidates(id, u.channel, u.interests);
-    if (pid) doMatch(id, pid);
+    if (pid && doMatch(id, pid)) paired++;
+  }
+  if (queue.length || paired) {
+    const byChannel = {};
+    for (const id of queue) {
+      const u = users.get(id);
+      if (u) byChannel[u.channel] = (byChannel[u.channel] || 0) + 1;
+    }
+    console.log(`[matchmaker] waiting=${queue.length} ${JSON.stringify(byChannel)} paired=${paired} online=${users.size}`);
   }
 }, SWEEP_MS);
 
