@@ -1,0 +1,10 @@
+{
+  "name": "strngr",
+  "short_name": "strngr",
+  "description": "Talk to a random stranger on video or text. No sign-up, no logs, no tracking.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

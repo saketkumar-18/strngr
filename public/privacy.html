@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy — strngr</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#0b0d12;--card:#141822;--border:#232938;--text:#f2f5fa;--dim:#8b93a7;--accent:#7c5cff;--accent2:#22d3ee}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:48px 22px 90px}
+.brand{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:1.2rem;text-decoration:none;color:var(--text);margin-bottom:40px}
+.brand .d{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:13px;color:#fff}
+h1{font-size:2rem;letter-spacing:-.02em;margin-bottom:8px}
+p.lead{color:var(--dim);margin-bottom:36px}
+h2{font-size:1.05rem;margin:34px 0 10px;color:var(--accent2)}
+p,li{color:#c6ccda;font-size:.95rem}
+ul{padding-left:20px;margin:8px 0}
+hr{border:none;border-top:1px solid var(--border);margin:34px 0}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.88rem}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border)}
+th{color:var(--dim);font-weight:600}
+td:first-child{color:var(--text)}
+.back{display:inline-block;margin-top:44px;color:var(--accent2);text-decoration:none;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="brand" href="/"><span class="d">S</span>strngr</a>
+  <h1>Privacy Policy</h1>
+  <p class="lead">The short version: we collect nothing about you, store nothing about you, and share nothing about you. Last updated: September 10, 2026.</p>
+
+  <h2>The whole point of strngr</h2>
+  <p>strngr pairs you with a random stranger for a video or text conversation. It exists on one principle: <strong>a conversation between two strangers is nobody else's business</strong> — including ours.</p>
+
+  <h2>What we collect: nothing</h2>
+  <ul>
+    <li><strong>No accounts.</strong> No email, phone number, or sign-up of any kind.</li>
+    <li><strong>No identifiers.</strong> You are a random socket connection in memory. Even we can't tell who you are.</li>
+    <li><strong>No message storage.</strong> Text messages are relayed to your partner and immediately discarded. There is no chat history — anywhere.</li>
+    <li><strong>No video storage.</strong> Your camera and mic never touch our servers. Video/audio is peer-to-peer (WebRTC), encrypted with DTLS-SRTP. It flows directly from your device to the other person's device.</li>
+    <li><strong>No logs that identify you.</strong> We keep no IP logs tied to conversations, no timestamps of who talked to whom, and no analytics.</li>
+    <li><strong>No trackers, cookies, or fingerprinting.</strong> The site sets no cookies and loads no third-party scripts, fonts, or analytics.</li>
+  </ul>
+
+  <h2>What our server sees (and how long it lives)</h2>
+  <table>
+    <tr><th>Data</th><th>Where</th><th>Retention</th></tr>
+    <tr><td>Text messages you send</td><td>Relayed through server memory</td><td>Milliseconds — relayed and dropped</td></tr>
+    <tr><td>Video/audio</td><td>Never on our server — direct device-to-device</td><td>Not applicable</td></tr>
+    <tr><td>Connection metadata (socket ID)</td><td>Volatile memory</td><td>Deleted the moment you disconnect</td></tr>
+    <tr><td>Report counts (anonymous)</td><td>Volatile memory</td><td>10 minutes</td></li>
+    </tr>
+    <tr><td>IP addresses</td><td>Standard server infra only</td><td>Never stored by the app</td></tr>
+  </table>
+  <p>The server's matchmaking state lives in RAM and is wiped on every restart. There is no database. If the server restarted mid-conversation, it would be physically impossible for anyone to recover what was said.</p>
+
+  <h2>What the other person can see</h2>
+  <p>Whatever you choose to show or type. This is a live conversation with a real human being — the same rules as talking to a stranger on the street apply. Please be decent. Please be careful.</p>
+
+  <h2>Reporting</h2>
+  <p>Tap <strong>Report &amp; skip</strong> to end a chat and flag the other user. Reports are counted anonymously in memory for 10 minutes — we never learn your identity, and the other person is not told who reported them. Users accumulating reports are disconnected from their chats.</p>
+
+  <h2>Age and legality</h2>
+  <p>strngr is 18+. You are responsible for the content of your conversation and for following your local laws. Do not share personal information with strangers: no real names early on, no addresses, no financial details, no intimate photos of yourself or anyone else.</p>
+
+  <h2>How we protect the data we don't have</h2>
+  <ul>
+    <li>All traffic is served over HTTPS/WSS with TLS.</li>
+    <li>Media is encrypted in transit (DTLS-SRTP) between peers.</li>
+    <li>Messages are rendered as plain text on the client — HTML/links are never executed, so a stranger can't send you a malicious link that does anything.</li>
+    <li>Signaling payloads are size-capped and rate-limited to prevent abuse.</li>
+  </ul>
+
+  <h2>Children</h2>
+  <p>strngr is not for anyone under 18. Because there is no sign-up, we rely on honest use. If a minor is found using the service, their connection is simply another socket we may disconnect.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or abuse reports with details: <a href="mailto:strngr.app@outlook.com" style="color:var(--accent2)">strngr.app@outlook.com</a>. We read everything. We store nothing from your email beyond replying to it.</p>
+
+  <hr>
+  <p style="font-size:.8rem;color:var(--dim)">Deliberately kept short. A privacy policy you can read in two minutes is a feature, not a bug.</p>
+  <a class="back" href="/">← Back to strngr</a>
+</div>
+</body>
+</html>
