@@ -391,6 +391,59 @@ def main():
             if cl:
                 cl.close()
 
+    # ---- T9: three-strikes report system ----
+    section("T9 · three-strikes")
+    target = None
+    reporters = []
+
+    def safe_drain(cli):
+        try:
+            cli.pump(0.3)
+        except Exception:
+            pass
+
+    try:
+        target = Client()  # the user who will be reported 3 times
+        target.emit_ack("find-partner", {"channel": "text"})
+        for i in range(3):
+            r = Client()
+            r.emit_ack("find-partner", {"channel": "text"})
+            reporters.append(r)
+            safe_drain(target); safe_drain(r)
+            target.wait_for("matched", 6)
+            r.wait_for("matched", 6)
+            r.emit("report")  # reporter leaves; target keeps searching below
+            safe_drain(target)  # socket may be force-closed on the 3rd report — expected
+            # target is now idle; search again for the next reporter
+            if i < 2:
+                target.emit_ack("find-partner", {"channel": "text"})
+                safe_drain(target)
+        # target should now be force-disconnected (3 distinct reporters)
+        dead = False
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            try:
+                target.pump(0.5)
+                if any(e == "__server_disconnected" for e, _ in target.event_log) or not target.alive:
+                    dead = True
+                    break
+            except Exception:
+                dead = True
+                break
+        if dead:
+            ok("three-strikes: reported user force-disconnected")
+        else:
+            fail("three-strikes", "target still connected after 3 reports")
+    except TimeoutError as e:
+        fail("three-strikes", f"match flow broke: {e!r}")
+    except Exception as e:
+        fail("three-strikes", repr(e))
+    finally:
+        if target:
+            target.close()
+        for r in reporters:
+            r.close()
+
     # ---- T8: static pages ----
     section("T8 · pages")
     for path, marker in [("/", "videoCard"), ("/privacy.html", "No accounts"), ("/terms.html", "Terms of Service")]:

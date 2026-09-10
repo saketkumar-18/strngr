@@ -217,6 +217,12 @@ io.on('connection', (socket) => {
     reports.set(pid, list);
     // the reported user simply sees the reporter leave — reporter stays anonymous
     breakPair(socket.id, 'left');
+    // three distinct reporters inside the window => the reported user is disconnected
+    const distinct = new Set(list.map((r) => r.from)).size;
+    if (distinct >= 3) {
+      const target = io.sockets.sockets.get(pid);
+      if (target) target.disconnect(true);
+    }
   });
 
   socket.on('disconnect', () => {
