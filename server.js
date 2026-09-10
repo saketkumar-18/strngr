@@ -42,13 +42,6 @@ app.use((_req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) =>
   res.json({ status: 'ok', uptimeSec: Math.round(process.uptime()), online: users.size }));
-app.get('/debug/state', (_req, res) => {
-  // temporary diagnostic (no user-identifying data; socket ids only, removed before wide use)
-  const state = { users: [], queue: [...queue], reports: {} };
-  for (const [id, u] of users) state.users.push({ id, state: u.state, channel: u.channel, partner: u.partner });
-  for (const [id, list] of reports) state.reports[id] = list.length;
-  res.json(state);
-});
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -63,6 +56,7 @@ const queue = [];               // socketIds currently searching (FIFO)
 const lastPartner = new Map();  // socketId -> previous partner socketId
 const buckets = new Map();      // socketId -> {tokens, ts} rate-limit buckets
 const reports = new Map();      // socketId -> [{from, at}] within REPORT_WINDOW_MS
+const lastChatWith = new Map(); // socketId -> {pid, at} last completed/active pairing (report robustness)
 
 function normInterests(list) {
   if (!Array.isArray(list)) return [];
@@ -122,6 +116,8 @@ function doMatch(aId, bId) {
   b.state = 'chatting'; b.partner = aId; b.since = null;
   lastPartner.set(aId, bId);
   lastPartner.set(bId, aId);
+  lastChatWith.set(aId, { pid: bId, at: Date.now() });
+  lastChatWith.set(bId, { pid: aId, at: Date.now() });
   const shared = a.interests.filter((t) => b.interests.includes(t));
   io.to(aId).emit('matched', { initiator: true, shared });
   io.to(bId).emit('matched', { initiator: false, shared });
@@ -216,14 +212,21 @@ io.on('connection', (socket) => {
   });
 
   socket.on('report', () => {
+    // report the CURRENT partner if chatting, else the most recent one (if recent enough)
+    let pid = null;
     const u = users.get(socket.id);
-    if (!u || u.state !== 'chatting' || !u.partner) return;
-    const pid = u.partner;
+    if (u && u.state === 'chatting' && u.partner) {
+      pid = u.partner;
+    } else {
+      const lc = lastChatWith.get(socket.id);
+      if (lc && Date.now() - lc.at < 60000) pid = lc.pid;
+    }
+    if (!pid) return;
     const list = (reports.get(pid) || []).filter((r) => Date.now() - r.at < REPORT_WINDOW_MS);
     list.push({ from: socket.id, at: Date.now() });
     reports.set(pid, list);
     // the reported user simply sees the reporter leave — reporter stays anonymous
-    breakPair(socket.id, 'left');
+    if (u && u.state === 'chatting' && u.partner === pid) breakPair(socket.id, 'left');
     // three distinct reporters inside the window => the reported user is disconnected
     const distinct = new Set(list.map((r) => r.from)).size;
     if (distinct >= 3) {
@@ -244,6 +247,7 @@ io.on('connection', (socket) => {
     users.delete(socket.id);
     leaveQueue(socket.id);
     lastPartner.delete(socket.id);
+    lastChatWith.delete(socket.id);
     buckets.delete(socket.id);
     reports.delete(socket.id);
     broadcastOnline();
