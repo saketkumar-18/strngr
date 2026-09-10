@@ -42,6 +42,13 @@ app.use((_req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) =>
   res.json({ status: 'ok', uptimeSec: Math.round(process.uptime()), online: users.size }));
+app.get('/debug/state', (_req, res) => {
+  // temporary diagnostic (no user-identifying data; socket ids only, removed before wide use)
+  const state = { users: [], queue: [...queue], reports: {} };
+  for (const [id, u] of users) state.users.push({ id, state: u.state, channel: u.channel, partner: u.partner });
+  for (const [id, list] of reports) state.reports[id] = list.length;
+  res.json(state);
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
