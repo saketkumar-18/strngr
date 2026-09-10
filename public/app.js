@@ -317,11 +317,9 @@
   }
 
   function closePC() {
-    if (pc) {
-      try { pc.getSenders().forEach((s) => { if (s.track) s.track.stop?.(); }); } catch (_) {}
-      // note: we stop only REMOTE-side senders above is wrong — senders carry OUR tracks.
-      // our local stream tracks are managed separately and kept for re-use.
-    }
+    // Close the peer connection only. NEVER stop sender tracks — getSenders()
+    // returns OUR camera/mic tracks; stopping them would kill the camera for
+    // the next stranger. Local stream lifecycle is handled by stopLocalStream().
     if (pc) { try { pc.close(); } catch (_) {} pc = null; }
     const rv = $('remoteVideo');
     if (rv) { rv.srcObject = null; rv.style.opacity = '1'; rv.dataset.videoOn = '1'; }
