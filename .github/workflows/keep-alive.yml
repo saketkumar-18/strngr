@@ -1,0 +1,25 @@
+name: keep-alive
+
+# Pings /health every 5 minutes (with a second ping mid-window) so the
+# Render free-tier instance never crosses its ~15 min idle sleep threshold.
+# Result: first visit is always warm (~0.4s) instead of a 20-50s cold start.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    if: github.repository == 'saketkumar-18/strngr'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: warm up strngr
+        run: |
+          for i in 1 2; do
+            curl -s -o /dev/null -w "ping $i -> %{http_code} (%{time_total}s)\n" \
+              --max-time 60 https://strngr.onrender.com/health || true
+            [ "$i" = "1" ] && sleep 150
+          done
