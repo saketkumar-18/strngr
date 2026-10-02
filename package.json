@@ -12,6 +12,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "compression": "^1.8.2",
     "express": "^4.19.2",
     "socket.io": "^4.8.0"
   },

@@ -13,6 +13,7 @@
 const http = require('http');
 const path = require('path');
 const express = require('express');
+const compression = require('compression');
 const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
@@ -29,6 +30,7 @@ const CHANNELS = ['text', 'video'];
 
 const app = express();
 app.disable('x-powered-by');
+app.use(compression());
 app.use((_req, res, next) => {
   res.set({
     'X-Content-Type-Options': 'nosniff',
@@ -39,7 +41,11 @@ app.use((_req, res, next) => {
   });
   next();
 });
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  // assets are tiny but revalidated every visit; let repeat visitors load instantly
+  maxAge: '1h',
+  etag: true,
+}));
 app.get('/health', (_req, res) =>
   res.json({ status: 'ok', uptimeSec: Math.round(process.uptime()), online: users.size }));
 
