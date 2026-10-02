@@ -21,5 +21,5 @@ jobs:
           for i in 1 2; do
             curl -s -o /dev/null -w "ping $i -> %{http_code} (%{time_total}s)\n" \
               --max-time 60 https://strngr.onrender.com/health || true
-            [ "$i" = "1" ] && sleep 150
+            if [ "$i" = "1" ]; then sleep 150; fi
           done
